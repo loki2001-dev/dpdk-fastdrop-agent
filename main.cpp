@@ -1,0 +1,28 @@
+#include <csignal>
+#include <stdint.h>
+
+std::atomic<bool> running{true};
+
+void signal_handler(int) {
+running = false;
+}
+
+const std::array<int, 6> handled_signals = {
+    SIGINT, SIGTERM, SIGTSTP, SIGHUP, SIGQUIT, SIGUSR1
+};
+
+void initialize() {
+    // signal
+    for (int sig : handled_signals) {
+    std::signal(sig, signal_handler);
+  }
+}
+
+int32_t main(int32_t argc, char *argv[]) {
+    initialize();
+
+    while (running) {
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
+    return 0;
+}
