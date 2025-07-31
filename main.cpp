@@ -1,5 +1,9 @@
+#include <atomic>
+#include <array>
+#include <chrono>
 #include <csignal>
 #include <stdint.h>
+#include <thread>
 
 std::atomic<bool> running{true};
 
