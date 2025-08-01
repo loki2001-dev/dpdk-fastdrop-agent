@@ -173,61 +173,75 @@ bool dpdk_init::has_hugepages() {
 
 bool dpdk_init::is_hugepages_mounted() {
     std::ifstream mounts("/proc/mounts");
+    if (!mounts.is_open()) {
+        spdlog::error("Failed to open /proc/mounts");
+        return false;
+    }
+
     std::string line;
     while (std::getline(mounts, line)) {
-        if (line.find("hugetlbfs") != std::string::npos &&
-            (line.find("/mnt/huge") != std::string::npos || line.find("/dev/hugepages") != std::string::npos)) {
-            spdlog::info("Hugepages filesystem is mounted.");
+        bool is_hugetlbfs = line.find("hugetlbfs") != std::string::npos;
+        if (!is_hugetlbfs) {
+            continue;
+        }
+
+        bool has_mnt_huge = line.find("/mnt/huge") != std::string::npos;
+        bool has_dev_hugepages = line.find("/dev/hugepages") != std::string::npos;
+
+        if (has_mnt_huge || has_dev_hugepages) {
+            spdlog::info("Hugepages filesystem is mounted: {}", line);
             return true;
         }
     }
+
     spdlog::warn("Hugepages filesystem is not mounted.");
     return false;
 }
 
 bool dpdk_init::is_ready_for_dpdk() {
-    bool result = true;
-
     if (!is_root()) {
         spdlog::error("Must run as root (tip, sudo ./dpdk-fastdrop-agent)");
-        result = false;
-    } else {
-        spdlog::info("Running as root user.");
+        return false;
     }
 
     if (!has_hugepages()) {
         spdlog::error("Hugepages not configured. Try: sudo sysctl -w vm.nr_hugepages=1024");
-        result = false;
+        return false;
     }
 
     if (!is_hugepages_mounted()) {
         spdlog::error("Hugepages not mounted. Try: sudo mount -t hugetlbfs none /mnt/huge");
-        result = false;
+        return false;
     }
 
-    return result;
+    spdlog::info("Running as root user.");
+    return true;
 }
 
 bool dpdk_init::configure_hugepages() {
     spdlog::info("Configuring hugepages...");
-    int result = std::system("sysctl -w vm.nr_hugepages=1024");
-    if(result == 0)
-        spdlog::info("Hugepages configured.");
-    else
-        spdlog::error("Failed to configure hugepages.");
 
+    int result = std::system("sysctl -w vm.nr_hugepages=1024");
+    if(result != 0) {
+        spdlog::error("Failed to configure hugepages.");
+        return false;
+    }
+
+    spdlog::info("Hugepages configured.");
     return result == 0;
 }
 
 bool dpdk_init::mount_hugepages() {
     spdlog::info("Mounting hugetlbfs at /mnt/huge...");
+
     std::string cmd = "mkdir -p /mnt/huge && mount -t hugetlbfs none /mnt/huge";
     int result = std::system(cmd.c_str());
-    if(result == 0)
-        spdlog::info("hugetlbfs mounted successfully.");
-    else
+    if(result != 0) {
         spdlog::error("Failed to mount hugetlbfs.");
+        return false;
+    }
 
+    spdlog::info("hugetlbfs mounted successfully.");
     return result == 0;
 }
 
