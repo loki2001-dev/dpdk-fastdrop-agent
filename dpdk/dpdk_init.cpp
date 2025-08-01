@@ -1,13 +1,14 @@
+#include <unistd.h>
 #include "dpdk_init.h"
 
 dpdk_init::dpdk_init()
-    : _initialized(false)
-    , _port_id(RTE_MAX_ETHPORTS)
-    , _mem_buf_pool(nullptr)
+    : _mem_buf_pool(nullptr)
     , _mem_buf_pool_name("MBUF_POOL")
     , _mem_buf_pool_size(8192)
     , _mem_buf_pool_cache_size(250)
-    , _mem_buf_pool_data_size(RTE_MBUF_DEFAULT_BUF_SIZE) {
+    , _mem_buf_pool_data_size(RTE_MBUF_DEFAULT_BUF_SIZE)
+    , _port_id(RTE_MAX_ETHPORTS)
+    , _initialized(false) {
     spdlog::info("Starting DPDK initialization...");
 
     // Check environment: root, hugepages configured and mounted
@@ -89,7 +90,7 @@ bool dpdk_init::create_mbuf_pool() {
     return true;
 }
 
-bool dpdk_init::configure_and_start_port() {
+bool dpdk_init::configure_and_start_port() const {
     rte_eth_conf port_conf = {};
     port_conf.rxmode.max_lro_pkt_size = RTE_ETHER_MAX_LEN;  // Max LRO packet size
 
@@ -133,11 +134,11 @@ bool dpdk_init::initialize_eal() {
         "dpdk-app",
         "-l", "0",                  // Logical core 0
         "-n", "4",                  // Memory channels
-        "--proc-type=auto",         // Auto detect primary/secondary
+        "--proc-type=auto",         // Auto-detect primary/secondary
         "--log-level=8",            // Debug log level
         "--vdev=net_tap0"           // Virtual NIC for testing
     };
-    constexpr int eal_argc = sizeof(eal_args) / sizeof(eal_args[0]);
+    constexpr int eal_argc = std::size(eal_args);
     int result = rte_eal_init(eal_argc, const_cast<char**>(eal_args));
     if (result < 0) {
         spdlog::error("rte_eal_init failed with code: {}", result);
@@ -158,7 +159,7 @@ bool dpdk_init::has_hugepages() {
     while (std::getline(f, line)) {
         if (line.find("HugePages_Total") != std::string::npos) {
             try {
-                auto count = std::stoi(line.substr(line.find(":") + 1));
+                auto count = std::stoi(line.substr(line.find(':') + 1));
                 spdlog::info("HugePages_Total: {}", count);
                 return count > 0;
             } catch (...) {
@@ -221,20 +222,21 @@ bool dpdk_init::is_ready_for_dpdk() {
 bool dpdk_init::configure_hugepages() {
     spdlog::info("Configuring hugepages...");
 
-    int result = std::system("sysctl -w vm.nr_hugepages=1024");
+    const std::string cmd = "sysctl -w vm.nr_hugepages=1024";
+    int result = std::system(cmd.c_str());
     if(result != 0) {
         spdlog::error("Failed to configure hugepages.");
         return false;
     }
 
     spdlog::info("Hugepages configured.");
-    return result == 0;
+    return result;
 }
 
 bool dpdk_init::mount_hugepages() {
     spdlog::info("Mounting hugetlbfs at /mnt/huge...");
 
-    std::string cmd = "mkdir -p /mnt/huge && mount -t hugetlbfs none /mnt/huge";
+    const std::string cmd = "mkdir -p /mnt/huge && mount -t hugetlbfs none /mnt/huge";
     int result = std::system(cmd.c_str());
     if(result != 0) {
         spdlog::error("Failed to mount hugetlbfs.");
@@ -242,7 +244,7 @@ bool dpdk_init::mount_hugepages() {
     }
 
     spdlog::info("hugetlbfs mounted successfully.");
-    return result == 0;
+    return result;
 }
 
 bool dpdk_init::ensure_dpdk_environment() {
@@ -274,6 +276,6 @@ bool dpdk_init::ensure_dpdk_environment() {
     return result;
 }
 
-bool dpdk_init::is_initialized() {
+bool dpdk_init::is_initialized() const {
     return _initialized;
 }

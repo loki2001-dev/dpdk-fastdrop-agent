@@ -1,30 +1,29 @@
 #pragma once
 
-#include <unistd.h>
 #include <fstream>
+#include <memory>
 #include <rte_ethdev.h>
 #include <spdlog/spdlog.h>
-#include <memory>
 
 class dpdk_init : public std::enable_shared_from_this<dpdk_init> {
 public:
     explicit dpdk_init();
     virtual ~dpdk_init();
 
-    bool is_initialized();
+    bool is_initialized() const;
 
 private:
     bool find_and_validate_port();
     bool create_mbuf_pool();
-    bool configure_and_start_port();
-    bool initialize_eal();
-    bool is_root();
-    bool is_hugepages_mounted();
-    bool is_ready_for_dpdk();
-    bool has_hugepages();
-    bool configure_hugepages();
-    bool ensure_dpdk_environment();
-    bool mount_hugepages();
+    bool configure_and_start_port() const;
+    static bool initialize_eal();
+    static bool is_root();
+    static bool is_hugepages_mounted();
+    static bool is_ready_for_dpdk();
+    static bool has_hugepages();
+    static bool configure_hugepages();
+    static bool ensure_dpdk_environment();
+    static bool mount_hugepages();
 
 private:
     rte_mempool* _mem_buf_pool;
