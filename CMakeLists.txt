@@ -4,6 +4,7 @@ PROJECT(dpdk-fastdrop-agent)
 # OPTION (Standard)
 SET(CMAKE_CXX_STANDARD 17)
 SET(CMAKE_CXX_STANDARD_REQUIRED ON)
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mssse3")
 
 # OPTION (3rdparty)
 SET(BUILD_SHARED_LIBS ON)
@@ -34,6 +35,8 @@ FILE(GLOB_RECURSE DPDK_SOURCES
 ADD_EXECUTABLE(dpdk-fastdrop-agent
         main.cpp
         ${DPDK_SOURCES}
+        dpdk/dpdk_packet_parser.cpp
+        dpdk/dpdk_packet_parser.h
 )
 
 # INCLUDE directories (OPTIONAL)
