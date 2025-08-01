@@ -323,17 +323,21 @@ void dpdk_init::stop_workers() {
 int dpdk_init::run_loop_worker(void* arg) {
     auto* self = static_cast<dpdk_init*>(arg);
     const unsigned lcore_id = rte_lcore_id();
-    const uint16_t burst_size = 32;
+    constexpr uint16_t burst_size = 32;
     rte_mbuf* bufs[burst_size];
+    rte_mbuf* tx_bufs[burst_size];
+    uint16_t tx_count = 0;
 
     const uint16_t rx_queue_count = 2;
     const uint16_t queue_id = lcore_id % rx_queue_count;
+    const uint16_t tx_queue_id = 0;
 
     spdlog::info("Starting worker loop on lcore {} with RX queue {}", lcore_id, queue_id);
 
     int empty_poll_counter = 0;
     constexpr int sleep_threshold = 100;
     while (rte_atomic32_read(&self->_running)) {
+        // RX
         const uint16_t nb_rx = rte_eth_rx_burst(self->_port_id, queue_id, bufs, burst_size);
         if (nb_rx == 0) {
             if (++empty_poll_counter >= sleep_threshold) {
@@ -353,23 +357,58 @@ int dpdk_init::run_loop_worker(void* arg) {
             uint16_t pkt_len = rte_pktmbuf_pkt_len(pkt);
 
             if (self->_packet_parser.parse(pkt_data, pkt_len)) {
-                // ip, port, ...
                 uint32_t src_ip = self->_packet_parser.get_src_ip();
                 uint16_t src_port = self->_packet_parser.get_src_port();
                 bool is_tcp = self->_packet_parser.is_tcp();
 
-                // compare
                 if (self->_packet_filter.match(src_ip, src_port, is_tcp)) {
+                    tx_bufs[tx_count++] = pkt;
+
+                    if (tx_count == burst_size) {
+                        uint16_t nb_tx = rte_eth_tx_burst(self->_port_id, tx_queue_id, tx_bufs, tx_count);
+
+                        uint32_t total_tx_bytes = 0;
+                        for (uint16_t j = 0; j < nb_tx; j++) {
+                            total_tx_bytes += rte_pktmbuf_pkt_len(tx_bufs[j]);
+                        }
+
+                        for (uint16_t j = nb_tx; j < tx_count; j++) {
+                            rte_pktmbuf_free(tx_bufs[j]);
+                            spdlog::warn("Packet TX failed (burst overflow), freed packet");
+                        }
+
+                        spdlog::info("TX burst: {} packets sent ({} bytes) on lcore {}", nb_tx, total_tx_bytes, lcore_id);
+                        tx_count = 0;
+                    }
+
                     self->_packet_parser.print_packet_hex_ascii(pkt_data, pkt_len);
                     self->_packet_parser.print_summary();
                 } else {
-                    spdlog::info("Packet blocked by filter: IP={} Port={}", self->_packet_parser.ipv4_to_string(src_ip), src_port);
+                    spdlog::info("Packet blocked by filter: IP={} Port={}",
+                                 self->_packet_parser.ipv4_to_string(src_ip), src_port);
+                    rte_pktmbuf_free(pkt);
                 }
             } else {
                 spdlog::warn("Failed to parse packet on lcore {}", lcore_id);
+                rte_pktmbuf_free(pkt);
+            }
+        }
+
+        if (tx_count > 0) {
+            uint16_t nb_tx = rte_eth_tx_burst(self->_port_id, tx_queue_id, tx_bufs, tx_count);
+
+            uint32_t total_tx_bytes = 0;
+            for (uint16_t j = 0; j < nb_tx; j++) {
+                total_tx_bytes += rte_pktmbuf_pkt_len(tx_bufs[j]);
             }
 
-            rte_pktmbuf_free(pkt);
+            for (uint16_t j = nb_tx; j < tx_count; j++) {
+                rte_pktmbuf_free(tx_bufs[j]);
+                spdlog::warn("Packet TX failed (flush), freed packet");
+            }
+
+            spdlog::info("TX flush: {} packets sent ({} bytes) on lcore {}", nb_tx, total_tx_bytes, lcore_id);
+            tx_count = 0;
         }
     }
 
