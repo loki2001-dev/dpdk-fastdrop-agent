@@ -2,8 +2,11 @@
 
 #include <fstream>
 #include <memory>
+#include <rte_atomic.h>
 #include <rte_ethdev.h>
 #include <spdlog/spdlog.h>
+
+#include "dpdk_packet_parser.h"
 
 class dpdk_init : public std::enable_shared_from_this<dpdk_init> {
 public:
@@ -11,6 +14,8 @@ public:
     virtual ~dpdk_init();
 
     bool is_initialized() const;
+    void launch_workers();
+    void stop_workers();
 
 private:
     bool find_and_validate_port();
@@ -25,7 +30,12 @@ private:
     static bool ensure_dpdk_environment();
     static bool mount_hugepages();
 
+    static int run_loop_worker(void* arg);
+
 private:
+    dpdk_packet_parser _packet_parser;
+
+    rte_atomic32_t _running;
     rte_mempool* _mem_buf_pool;
 
     std::string _mem_buf_pool_name;

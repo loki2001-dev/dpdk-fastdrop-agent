@@ -32,10 +32,13 @@ int32_t main(int32_t argc, char *argv[]) {
     initialize();
 
     const auto dpdk_initializer = std::make_shared<dpdk_init>();
+    dpdk_initializer->launch_workers();
 
     while (running) {
         std::this_thread::sleep_for(std::chrono::seconds(1));
     }
+
+    dpdk_initializer->stop_workers();
 
     return EXIT_SUCCESS;
 }

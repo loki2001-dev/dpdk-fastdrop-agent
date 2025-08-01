@@ -1,4 +1,5 @@
 #include <unistd.h>
+#include <iomanip>
 #include "dpdk_init.h"
 
 dpdk_init::dpdk_init()
@@ -48,6 +49,7 @@ dpdk_init::dpdk_init()
 
     spdlog::info("DPDK initialization complete. Port {} started in promiscuous mode.", _port_id);
     _initialized = true;
+    rte_atomic32_set(&_running, 1);
 }
 
 dpdk_init::~dpdk_init() {
@@ -65,12 +67,16 @@ bool dpdk_init::find_and_validate_port() {
         return false;
     }
 
-    _port_id = rte_eth_find_next(0);  // Find next valid port starting at 0
-    if (_port_id == RTE_MAX_ETHPORTS || !rte_eth_dev_is_valid_port(_port_id)) {
-        spdlog::error("No available Ethernet port found.");
-        return false;
+    for (uint16_t port = 0; port < port_count; ++port) {
+        if (rte_eth_dev_is_valid_port(port)) {
+            _port_id = port;
+            spdlog::info("Using Ethernet port: {}", _port_id);
+            return true;
+        }
     }
-    return true;
+
+    spdlog::error("No available Ethernet port found.");
+    return false;
 }
 
 bool dpdk_init::create_mbuf_pool() {
@@ -93,27 +99,44 @@ bool dpdk_init::create_mbuf_pool() {
 bool dpdk_init::configure_and_start_port() const {
     rte_eth_conf port_conf = {};
     port_conf.rxmode.max_lro_pkt_size = RTE_ETHER_MAX_LEN;  // Max LRO packet size
+    port_conf.rxmode.mq_mode = RTE_ETH_MQ_RX_RSS;   // Multi Queue
 
     int result = 0;
 
-    // Configure port with 1 RX and 1 TX queue
-    result = rte_eth_dev_configure(_port_id, 1, 1, &port_conf);
-    if (result < 0) {
-        spdlog::error("Failed to configure Ethernet device: {}", rte_strerror(-result));
-        return false;
-    }
+    constexpr uint16_t rx_queue_count = 2;
+    constexpr uint16_t tx_queue_count = 2;
 
-    // Setup RX queue 0 with 128 descriptors
-    result = rte_eth_rx_queue_setup(_port_id, 0, 128, rte_eth_dev_socket_id(_port_id), nullptr, _mem_buf_pool);
-    if (result < 0) {
-        spdlog::error("Failed to setup RX queue: {}", rte_strerror(-result));
-        return false;
+    rte_eth_dev_configure(_port_id, rx_queue_count, tx_queue_count, &port_conf);
+
+    // Setup RX queue 0-n with 128 descriptors
+    for (uint16_t q = 0; q < rx_queue_count; ++q) {
+        int ret = rte_eth_rx_queue_setup(_port_id, q, 128, rte_eth_dev_socket_id(_port_id), nullptr, _mem_buf_pool);
+        if (ret < 0) {
+            spdlog::error("RX queue {} setup failed: {}", q, ret);
+            return false;
+        }
     }
 
     // Setup TX queue 0 with 128 descriptors
     result = rte_eth_tx_queue_setup(_port_id, 0, 128, rte_eth_dev_socket_id(_port_id), nullptr);
     if (result < 0) {
         spdlog::error("Failed to setup TX queue: {}", rte_strerror(-result));
+        return false;
+    }
+
+    // OPTIONAL (RX interrupt mode)
+    for (uint16_t q = 0; q < rx_queue_count; ++q) {
+        int ret = rte_eth_dev_rx_intr_enable(_port_id, q);
+        if (ret != 0) {
+            spdlog::warn("RX interrupt enable failed for queue {}: {}", q, ret);
+        } else {
+            spdlog::info("RX interrupt enabled for queue {}", q);
+        }
+    }
+
+    // Verification
+    if (!is_ready_for_dpdk()) {
+        spdlog::error("Failed to Ready for DPDK: {}", rte_strerror(-result));
         return false;
     }
 
@@ -132,8 +155,8 @@ bool dpdk_init::configure_and_start_port() const {
 bool dpdk_init::initialize_eal() {
     const char* eal_args[] = {
         "dpdk-app",
-        "-l", "0",                  // Logical core 0
-        "-n", "4",                  // Memory channels
+        "-l", "0-3",            // Logical core 0-n
+        "-n", "4",              // Memory channels
         "--proc-type=auto",         // Auto-detect primary/secondary
         "--log-level=8",            // Debug log level
         "--vdev=net_tap0"           // Virtual NIC for testing
@@ -278,4 +301,69 @@ bool dpdk_init::ensure_dpdk_environment() {
 
 bool dpdk_init::is_initialized() const {
     return _initialized;
+}
+
+void dpdk_init::stop_workers() {
+    rte_atomic32_set(&_running, 0);
+}
+
+int dpdk_init::run_loop_worker(void* arg) {
+    auto* self = static_cast<dpdk_init*>(arg);
+    const unsigned lcore_id = rte_lcore_id();
+    const uint16_t burst_size = 32;
+    rte_mbuf* bufs[burst_size];
+
+    const uint16_t rx_queue_count = 2;
+    const uint16_t queue_id = lcore_id % rx_queue_count;
+
+    spdlog::info("Starting worker loop on lcore {} with RX queue {}", lcore_id, queue_id);
+
+    int empty_poll_counter = 0;
+    constexpr int sleep_threshold = 100;
+    while (rte_atomic32_read(&self->_running)) {
+        const uint16_t nb_rx = rte_eth_rx_burst(self->_port_id, queue_id, bufs, burst_size);
+        if (nb_rx == 0) {
+            if (++empty_poll_counter >= sleep_threshold) {
+                std::this_thread::sleep_for(std::chrono::microseconds(100));
+                empty_poll_counter = 0;
+            } else {
+                rte_pause();
+            }
+            continue;
+        }
+
+        empty_poll_counter = 0;
+
+        for (uint16_t i = 0; i < nb_rx; i++) {
+            rte_mbuf* pkt = bufs[i];
+            const uint8_t* pkt_data = rte_pktmbuf_mtod(pkt, const uint8_t*);
+            uint16_t pkt_len = rte_pktmbuf_pkt_len(pkt);
+
+            if (self->_packet_parser.parse(pkt_data, pkt_len)) {
+                self->_packet_parser.print_packet_hex_ascii(pkt_data, pkt_len);
+                self->_packet_parser.print_summary();
+            } else {
+                spdlog::warn("Failed to parse packet on lcore {}", lcore_id);
+            }
+
+            rte_pktmbuf_free(pkt);
+        }
+    }
+
+    spdlog::info("Worker loop on lcore {} exiting", lcore_id);
+    return 0;
+}
+
+void dpdk_init::launch_workers() {
+    unsigned lcore_id;
+
+    RTE_LCORE_FOREACH_WORKER(lcore_id) {
+        rte_eal_remote_launch(dpdk_init::run_loop_worker, this, lcore_id);
+    }
+
+    run_loop_worker(this);
+
+    RTE_LCORE_FOREACH_WORKER(lcore_id) {
+        rte_eal_wait_lcore(lcore_id);
+    }
 }
