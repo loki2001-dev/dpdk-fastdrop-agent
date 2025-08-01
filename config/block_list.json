@@ -1,0 +1,60 @@
+[
+  {
+    "ip": "192.168.0.10",
+    "port": 80,
+    "block": true,
+    "comment": "Block HTTP access from specific IP"
+  },
+  {
+    "ip": "172.16.5.8",
+    "block": true,
+    "comment": "Block all traffic from this IP regardless of port"
+  },
+  {
+    "port": 443,
+    "block": false,
+    "comment": "Allow HTTPS for any IP"
+  },
+  {
+    "port": 8080,
+    "block": true,
+    "comment": "Block proxy port globally"
+  },
+  {
+    "ip": "203.0.113.55",
+    "port": 554,
+    "block": true,
+    "comment": "Block RTSP stream from known external IP"
+  },
+  {
+    "port": 21,
+    "block": true,
+    "comment": "Block FTP globally"
+  },
+  {
+    "port": 22,
+    "block": true,
+    "comment": "Block SSH globally"
+  },
+  {
+    "port": 23,
+    "block": true,
+    "comment": "Block Telnet globally"
+  },
+  {
+    "port": 25,
+    "block": true,
+    "comment": "Block SMTP globally"
+  },
+  {
+    "ip": "198.51.100.99",
+    "block": false,
+    "comment": "Allow all ports from specific trusted IP"
+  },
+  {
+    "ip": "192.0.2.45",
+    "port": 53,
+    "block": true,
+    "comment": "Block DNS queries from specific IP"
+  }
+]
