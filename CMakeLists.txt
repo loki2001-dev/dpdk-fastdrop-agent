@@ -35,8 +35,6 @@ FILE(GLOB_RECURSE DPDK_SOURCES
 ADD_EXECUTABLE(dpdk-fastdrop-agent
         main.cpp
         ${DPDK_SOURCES}
-        dpdk/dpdk_packet_parser.cpp
-        dpdk/dpdk_packet_parser.h
 )
 
 # INCLUDE directories (OPTIONAL)
