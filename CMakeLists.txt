@@ -24,9 +24,16 @@ INCLUDE_DIRECTORIES(
         ${DPDK_INCLUDE_DIRS}
 )
 
+# GLOB
+FILE(GLOB_RECURSE DPDK_SOURCES
+        "${PROJECT_SOURCE_DIR}/dpdk/*.cpp"
+        "${PROJECT_SOURCE_DIR}/dpdk/*.h"
+)
+
 # DEFINE executable files
 ADD_EXECUTABLE(dpdk-fastdrop-agent
         main.cpp
+        ${DPDK_SOURCES}
 )
 
 # INCLUDE directories (OPTIONAL)
