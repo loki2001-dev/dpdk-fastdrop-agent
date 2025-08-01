@@ -2,11 +2,8 @@
 #include <array>
 #include <chrono>
 #include <csignal>
-#include <iostream>
 #include <memory>
 #include <thread>
-#include <unistd.h>
-#include <fstream>
 #include <string>
 
 #include "dpdk/dpdk_init.h"
