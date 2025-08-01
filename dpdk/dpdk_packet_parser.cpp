@@ -247,3 +247,35 @@ void dpdk_packet_parser::print_summary() const {
             break;
     }
 }
+
+uint32_t dpdk_packet_parser::get_src_ip() const {
+    if (_ip4) {
+        return _ip4->src_addr;
+    }
+    return 0;
+}
+
+uint16_t dpdk_packet_parser::get_src_port() const {
+    if (_tcp) {
+        return ntohs(_tcp->src_port);
+    }
+    if (_udp) {
+        return ntohs(_udp->src_port);
+    }
+    return 0;
+}
+
+bool dpdk_packet_parser::is_tcp() const {
+    return _l4_proto == L4Protocol::TCP;
+}
+
+std::string dpdk_packet_parser::ipv4_to_string(uint32_t ip) {
+    struct in_addr addr;
+    addr.s_addr = ip;
+
+    char buf[INET_ADDRSTRLEN] = {0x00, };
+    if (inet_ntop(AF_INET, &addr, buf, sizeof(buf)) == nullptr) {
+        return std::string("Invalid IP");
+    }
+    return std::string(buf);
+}

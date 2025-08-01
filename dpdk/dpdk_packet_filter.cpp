@@ -48,6 +48,11 @@ bool dpdk_packet_filter::load_rules(const std::string& path) {
         }
 
         rule.block = item.value("block", true);
+
+        if (item.contains("comment")) {
+            rule.comment = item["comment"].get<std::string>();
+        }
+
         _rules.push_back(rule);
     }
 
@@ -69,4 +74,17 @@ bool dpdk_packet_filter::match(uint32_t ip, uint16_t port, bool is_tcp) {
         return !rule.block;
     }
     return true;
+}
+
+void dpdk_packet_filter::print_rules_comments() const {
+    spdlog::info("==== Packet Filter Rules Comments (Total: {}) ====", _rules.size());
+    int idx = 0;
+    for (const auto& rule : _rules) {
+        if (!rule.comment.empty()) {
+            spdlog::info("- Rule {}: {}", idx++, rule.comment);
+        } else {
+            spdlog::info("- Rule {}: (No comment)", idx++);
+        }
+    }
+    spdlog::info("===============================================================");
 }

@@ -47,6 +47,14 @@ dpdk_init::dpdk_init()
     }
     spdlog::info("Ethernet port configured and started.");
 
+    // Load Filter Rules
+    const std::string filter_rule_path = "../config/block_list.json";
+    if (!_packet_filter.load_rules(filter_rule_path)) {
+        spdlog::error("Failed to load packet filtering rules from {}", filter_rule_path);
+        return;
+    }
+    _packet_filter.print_rules_comments();
+
     spdlog::info("DPDK initialization complete. Port {} started in promiscuous mode.", _port_id);
     _initialized = true;
     rte_atomic32_set(&_running, 1);
@@ -345,8 +353,18 @@ int dpdk_init::run_loop_worker(void* arg) {
             uint16_t pkt_len = rte_pktmbuf_pkt_len(pkt);
 
             if (self->_packet_parser.parse(pkt_data, pkt_len)) {
-                self->_packet_parser.print_packet_hex_ascii(pkt_data, pkt_len);
-                self->_packet_parser.print_summary();
+                // ip, port, ...
+                uint32_t src_ip = self->_packet_parser.get_src_ip();
+                uint16_t src_port = self->_packet_parser.get_src_port();
+                bool is_tcp = self->_packet_parser.is_tcp();
+
+                // compare
+                if (self->_packet_filter.match(src_ip, src_port, is_tcp)) {
+                    self->_packet_parser.print_packet_hex_ascii(pkt_data, pkt_len);
+                    self->_packet_parser.print_summary();
+                } else {
+                    spdlog::info("Packet blocked by filter: IP={} Port={}", self->_packet_parser.ipv4_to_string(src_ip), src_port);
+                }
             } else {
                 spdlog::warn("Failed to parse packet on lcore {}", lcore_id);
             }

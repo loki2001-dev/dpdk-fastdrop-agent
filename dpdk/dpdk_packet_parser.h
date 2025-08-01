@@ -86,6 +86,10 @@ public:
     bool parse(const uint8_t* data, uint16_t len);
     void print_packet_hex_ascii(const uint8_t* data, uint16_t len) const;
     void print_summary() const;
+    uint32_t get_src_ip() const;
+    uint16_t get_src_port() const;
+    bool is_tcp() const;
+    std::string ipv4_to_string(uint32_t ip);
 
 private:
     const uint8_t* skip_ipv6_extension_headers(const uint8_t* data, uint16_t total_len, uint8_t& next_header, uint16_t& header_len) const;

@@ -7,6 +7,7 @@
 #include <spdlog/spdlog.h>
 
 #include "dpdk_packet_parser.h"
+#include "dpdk_packet_filter.h"
 
 class dpdk_init : public std::enable_shared_from_this<dpdk_init> {
 public:
@@ -34,6 +35,7 @@ private:
 
 private:
     dpdk_packet_parser _packet_parser;
+    dpdk_packet_filter _packet_filter;
 
     rte_atomic32_t _running;
     rte_mempool* _mem_buf_pool;
