@@ -6,7 +6,7 @@
 ---
 
 ## Features
-- Loads filtering rules from JSON config files (e.g. `blocklist.json`)
+- Loads filtering rules from JSON config files (e.g. `block_list.json`)
 - Parses TCP/UDP packets for IP and port matching
 - Burst-based packet receive, parse, filter, and transmit pipeline
 - Releases memory of dropped or failed-to-send packets to prevent leaks
@@ -36,7 +36,7 @@
 sudo apt update
 
 # Clone the repository
-git clone https://github.com/your-repo/dpdk-firewall-agent.git
+git clone https://github.com/loki2001-dev/dpdk-firewall-agent.git
 cd dpdk-firewall-agent
 
 # Initialize submodules
