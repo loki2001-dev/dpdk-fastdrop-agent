@@ -305,6 +305,11 @@ bool dpdk_init::is_initialized() const {
 
 void dpdk_init::stop_workers() {
     rte_atomic32_set(&_running, 0);
+
+    unsigned lcore_id;
+    RTE_LCORE_FOREACH_WORKER(lcore_id) {
+        rte_eal_wait_lcore(lcore_id);
+    }
 }
 
 int dpdk_init::run_loop_worker(void* arg) {
@@ -359,11 +364,5 @@ void dpdk_init::launch_workers() {
 
     RTE_LCORE_FOREACH_WORKER(lcore_id) {
         rte_eal_remote_launch(dpdk_init::run_loop_worker, this, lcore_id);
-    }
-
-    run_loop_worker(this);
-
-    RTE_LCORE_FOREACH_WORKER(lcore_id) {
-        rte_eal_wait_lcore(lcore_id);
     }
 }
