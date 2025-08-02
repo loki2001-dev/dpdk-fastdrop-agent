@@ -1,5 +1,5 @@
 # dpdk-firewall-agent (Modern C++ & DPDK)
-- A Blocklist-Based Packet Filtering Firewall Project
+- A Blocklist-Driven, L3/L4 Packet Filtering Firewall for High-Performance Networking
 - Lightweight and efficient DPDK-based firewall that filters network packets by IP and port rules.
 - Parses and applies filter rules loaded from JSON configuration files, then passes or drops packets accordingly.
 
