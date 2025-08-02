@@ -1,3 +1,6 @@
+#ifndef DPDK_FASTDROP_AGENT_DPDK_FIREWALL_H
+#define DPDK_FASTDROP_AGENT_DPDK_FIREWALL_H
+
 #pragma once
 
 #include <fstream>
@@ -9,10 +12,10 @@
 #include "dpdk_packet_parser.h"
 #include "dpdk_packet_filter.h"
 
-class dpdk_init : public std::enable_shared_from_this<dpdk_init> {
+class dpdk_firewall : public std::enable_shared_from_this<dpdk_firewall> {
 public:
-    explicit dpdk_init();
-    virtual ~dpdk_init();
+    explicit dpdk_firewall();
+    virtual ~dpdk_firewall();
 
     bool is_initialized() const;
     void launch_workers();
@@ -48,3 +51,5 @@ private:
     uint16_t _port_id;
     bool _initialized;
 };
+
+#endif // DPDK_FASTDROP_AGENT_DPDK_FIREWALL_H

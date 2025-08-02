@@ -1,8 +1,8 @@
 #include <unistd.h>
 #include <iomanip>
-#include "dpdk_init.h"
+#include "dpdk_firewall.h"
 
-dpdk_init::dpdk_init()
+dpdk_firewall::dpdk_firewall()
     : _mem_buf_pool(nullptr)
     , _mem_buf_pool_name("MBUF_POOL")
     , _mem_buf_pool_size(8192)
@@ -60,7 +60,7 @@ dpdk_init::dpdk_init()
     rte_atomic32_set(&_running, 1);
 }
 
-dpdk_init::~dpdk_init() {
+dpdk_firewall::~dpdk_firewall() {
     if (is_initialized()) {
         rte_eth_dev_stop(_port_id);
         rte_eth_dev_close(_port_id);
@@ -68,7 +68,7 @@ dpdk_init::~dpdk_init() {
     }
 }
 
-bool dpdk_init::find_and_validate_port() {
+bool dpdk_firewall::find_and_validate_port() {
     uint16_t port_count = rte_eth_dev_count_avail();
     if (port_count == 0) {
         spdlog::error("No Ethernet devices found.");
@@ -87,7 +87,7 @@ bool dpdk_init::find_and_validate_port() {
     return false;
 }
 
-bool dpdk_init::create_mbuf_pool() {
+bool dpdk_firewall::create_mbuf_pool() {
     _mem_buf_pool = rte_pktmbuf_pool_create(
         _mem_buf_pool_name.c_str(),
         _mem_buf_pool_size,
@@ -104,7 +104,7 @@ bool dpdk_init::create_mbuf_pool() {
     return true;
 }
 
-bool dpdk_init::configure_and_start_port() const {
+bool dpdk_firewall::configure_and_start_port() const {
     rte_eth_conf port_conf = {};
     port_conf.rxmode.max_lro_pkt_size = RTE_ETHER_MAX_LEN;  // Max LRO packet size
     port_conf.rxmode.mq_mode = RTE_ETH_MQ_RX_RSS;   // Multi Queue
@@ -160,7 +160,7 @@ bool dpdk_init::configure_and_start_port() const {
     return true;
 }
 
-bool dpdk_init::initialize_eal() {
+bool dpdk_firewall::initialize_eal() {
     const char* eal_args[] = {
         "dpdk-app",
         "-l", "0-3",            // Logical core 0-n
@@ -178,13 +178,13 @@ bool dpdk_init::initialize_eal() {
     return true;
 }
 
-bool dpdk_init::is_root() {
+bool dpdk_firewall::is_root() {
     bool root = geteuid() == 0;
     spdlog::info("Check root privilege: {}", root ? "yes" : "no");
     return root;
 }
 
-bool dpdk_init::has_hugepages() {
+bool dpdk_firewall::has_hugepages() {
     std::ifstream f("/proc/meminfo");
     std::string line;
     while (std::getline(f, line)) {
@@ -203,7 +203,7 @@ bool dpdk_init::has_hugepages() {
     return false;
 }
 
-bool dpdk_init::is_hugepages_mounted() {
+bool dpdk_firewall::is_hugepages_mounted() {
     std::ifstream mounts("/proc/mounts");
     if (!mounts.is_open()) {
         spdlog::error("Failed to open /proc/mounts");
@@ -230,7 +230,7 @@ bool dpdk_init::is_hugepages_mounted() {
     return false;
 }
 
-bool dpdk_init::is_ready_for_dpdk() {
+bool dpdk_firewall::is_ready_for_dpdk() {
     if (!is_root()) {
         spdlog::error("Must run as root (tip, sudo ./dpdk-fastdrop-agent)");
         return false;
@@ -250,7 +250,7 @@ bool dpdk_init::is_ready_for_dpdk() {
     return true;
 }
 
-bool dpdk_init::configure_hugepages() {
+bool dpdk_firewall::configure_hugepages() {
     spdlog::info("Configuring hugepages...");
 
     const std::string cmd = "sysctl -w vm.nr_hugepages=1024";
@@ -264,7 +264,7 @@ bool dpdk_init::configure_hugepages() {
     return result;
 }
 
-bool dpdk_init::mount_hugepages() {
+bool dpdk_firewall::mount_hugepages() {
     spdlog::info("Mounting hugetlbfs at /mnt/huge...");
 
     const std::string cmd = "mkdir -p /mnt/huge && mount -t hugetlbfs none /mnt/huge";
@@ -278,7 +278,7 @@ bool dpdk_init::mount_hugepages() {
     return result;
 }
 
-bool dpdk_init::ensure_dpdk_environment() {
+bool dpdk_firewall::ensure_dpdk_environment() {
     if (!is_root()) {
         spdlog::error("Must run as root (tip, sudo ./dpdk-fastdrop-agent)");
         return false;
@@ -307,11 +307,11 @@ bool dpdk_init::ensure_dpdk_environment() {
     return result;
 }
 
-bool dpdk_init::is_initialized() const {
+bool dpdk_firewall::is_initialized() const {
     return _initialized;
 }
 
-void dpdk_init::stop_workers() {
+void dpdk_firewall::stop_workers() {
     rte_atomic32_set(&_running, 0);
 
     unsigned lcore_id;
@@ -320,8 +320,8 @@ void dpdk_init::stop_workers() {
     }
 }
 
-int dpdk_init::run_loop_worker(void* arg) {
-    auto* self = static_cast<dpdk_init*>(arg);
+int dpdk_firewall::run_loop_worker(void* arg) {
+    auto* self = static_cast<dpdk_firewall*>(arg);
     const unsigned lcore_id = rte_lcore_id();
     constexpr uint16_t burst_size = 32;
     rte_mbuf* bufs[burst_size];
@@ -416,10 +416,10 @@ int dpdk_init::run_loop_worker(void* arg) {
     return 0;
 }
 
-void dpdk_init::launch_workers() {
+void dpdk_firewall::launch_workers() {
     unsigned lcore_id;
 
     RTE_LCORE_FOREACH_WORKER(lcore_id) {
-        rte_eal_remote_launch(dpdk_init::run_loop_worker, this, lcore_id);
+        rte_eal_remote_launch(dpdk_firewall::run_loop_worker, this, lcore_id);
     }
 }
